@@ -33,7 +33,7 @@ class TankEnv(gym.Env):
 
     def __init__(self):
         self.action_space = gym.spaces.Discrete(6)
-        self.observation_space = gym.spaces.Box(low=0, high=255, shape=(HEIGHT, WIDTH, 3), dtype=np.uint8)
+        self.observation_space = gym.spaces.Box(low=0, high=255, shape=(WIDTH, HEIGHT, 3), dtype=np.uint8)
 
         # Pygame init
         pygame.init()
@@ -132,7 +132,11 @@ class TankEnv(gym.Env):
                              self.photo_bullet_left]
 
         self.reward = 0
-        self.running = True
+        self.done = False
+
+        ###################################################################
+        self.screen_data = pygame.surfarray.array3d(self.screen)
+        ####################################################################
 
     def step(self, action):
         if action == 5:
@@ -146,7 +150,7 @@ class TankEnv(gym.Env):
             self.reward = 1
         if pygame.sprite.groupcollide(self.enemy_bullet, self.my_tank, True, True):
             self.reward = -1
-            self.running = False
+            self.done = True
         pygame.sprite.groupcollide(self.my_bullet, self.all_wall, True, True)
         pygame.sprite.groupcollide(self.enemy_bullet, self.all_wall, True, True)
 
@@ -157,9 +161,11 @@ class TankEnv(gym.Env):
 
         self.time -= 1
         if self.time < 0:
-            self.running = False
+            self.done = True
 
-        return self.reward, self.running
+        observation = self.screen_data
+
+        return observation, self.reward, self.done, {"info": "ok"}
 
     def render(self, mode='human'):
         self.my_tank.update()
@@ -176,6 +182,7 @@ class TankEnv(gym.Env):
         self.my_bullet.draw(self.screen)
         self.enemy_bullet.draw(self.screen)
 
+        self.screen_data = pygame.surfarray.array3d(self.screen)
         pygame.display.flip()
 
     def reset(self):
@@ -202,24 +209,26 @@ class TankEnv(gym.Env):
         # Play time
         self.time = FPS * 120
 
-        self.running = True
+        self.done = False
+        observation = self.screen_data
 
-        return self.running
+        return observation
 
 
 def build_model(height, width, channels, actions):
     model = Sequential()
-    model.add(Convolution2D(5200, (10, 10), activation='relu', input_shape=(height, width, channels)))
-    model.add(Convolution2D(208, (5, 5), activation='relu'))
+    model.add(Convolution2D(64, (10, 10), strides=(3, 3), activation='relu', input_shape=(3, height, width, channels)))
+    model.add(Convolution2D(32, (5, 5), strides=(3, 3), activation='relu'))
     model.add(Flatten())
     model.add(Dense(actions, activation='linear'))
     return model
 
 
 def build_agent(model, actions):
+    model.summary()
     policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=1., value_min=.1, value_test=.2,
                                   nb_steps=10000)
-    memory = SequentialMemory(limit=1000, window_length=3)
+    memory = SequentialMemory(limit=10000, window_length=3)
     dqn = DQNAgent(model=model, memory=memory, policy=policy,
                    enable_dueling_network=True, dueling_type='avg',
                    nb_actions=actions, nb_steps_warmup=1000
@@ -231,11 +240,10 @@ def main():
     env = TankEnv()
     actions = env.action_space.n
     height, width, channels = env.observation_space.shape
-    print(height, width, channels)
     model = build_model(height, width, channels, actions)
     dqn = build_agent(model, actions)
     dqn.compile(Adam(lr=1e-4))
-    dqn.fit(env, nb_steps=10000, visualize=False, verbose=2)
+    dqn.fit(env, nb_steps=10000, visualize=True, verbose=2)
 
     scores = dqn.test(env, nb_episodes=10, visualize=True)
     print(np.mean(scores.history['episode_reward']))
@@ -244,29 +252,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    # Quit = False
-    # action = 0
-    # game = TankEnv()
-    # while not Quit:
-    #     running = game.reset()
-    #     while running:
-    #         game.clock.tick(FPS)
-    #         for event in pygame.event.get():
-    #             if event.type == pygame.QUIT:
-    #                 game.running = False
-    #                 Quit = True
-    #             elif event.type == pygame.KEYDOWN:
-    #                 if event.key == pygame.K_UP:
-    #                     action = 1
-    #                 elif event.key == pygame.K_DOWN:
-    #                     action = 2
-    #                 elif event.key == pygame.K_RIGHT:
-    #                     action = 3
-    #                 elif event.key == pygame.K_LEFT:
-    #                     action = 4
-    #                 elif event.key == pygame.K_SPACE:
-    #                     action = 5
-    #         game.step(action)
-    #         action = 0
-    #         game.render()
-    # pygame.quit()
