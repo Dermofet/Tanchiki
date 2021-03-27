@@ -7,7 +7,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Flatten, Convolution2D
 from tensorflow.keras.optimizers import Adam
 
-from rl.agents import DQNAgent
+from rl.agents.dqn import DQNAgent
 from rl.memory import SequentialMemory
 from rl.policy import LinearAnnealedPolicy, EpsGreedyQPolicy
 
@@ -43,7 +43,7 @@ class TankEnv(gym.Env):
         self.clock = pygame.time.Clock()
 
         # Play time (120 sec)
-        self.time = FPS * 120
+        self.time = FPS * 60
 
         # Walls init
         self.all_wall = pygame.sprite.Group()
@@ -53,7 +53,7 @@ class TankEnv(gym.Env):
 
         # Enemies' bullets init
         self.enemy_bullet = pygame.sprite.Group()
-        self.tanks = ((25, 25), (400, 25), (775, 25))
+        self.tanks = ((25, 25), (425, 25), (775, 25), (25, 325), (775, 325), (25, 625), (425, 625), (775, 625))
 
         # Player init
         self.my_tank = pygame.sprite.Group()
@@ -144,17 +144,18 @@ class TankEnv(gym.Env):
         else:
             self.player.move(action)
 
-        self.reward = 0
-
         if pygame.sprite.groupcollide(self.my_bullet, self.enemy_tanks, True, True):
-            self.reward = 1
-        if pygame.sprite.groupcollide(self.enemy_bullet, self.my_tank, True, True):
-            self.reward = -1
+            self.reward = 30
+        elif pygame.sprite.groupcollide(self.enemy_bullet, self.my_tank, True, True):
+            self.reward = -50
             self.done = True
-        pygame.sprite.groupcollide(self.my_bullet, self.all_wall, True, True)
+        elif pygame.sprite.groupcollide(self.my_bullet, self.all_wall, True, True):
+            self.reward = 0
+        else:
+            self.reward = -0.01
         pygame.sprite.groupcollide(self.enemy_bullet, self.all_wall, True, True)
 
-        if len(self.enemy_tanks) < 3:
+        if len(self.enemy_tanks) < 8:
             tank = choice(self.tanks)
             self.enemy_tanks.add(
                 _enemy_tank.EnemyTank(tank, self.photo_enemy_tank, self.all_wall, self.enemy_bullet, self.photo_bullet))
@@ -162,7 +163,8 @@ class TankEnv(gym.Env):
         self.time -= 1
         if self.time < 0:
             self.done = True
-
+        if self.time % FPS == 0:
+            print(self.time/FPS)
         observation = self.screen_data
 
         return observation, self.reward, self.done, {"info": "ok"}
@@ -183,17 +185,18 @@ class TankEnv(gym.Env):
         self.enemy_bullet.draw(self.screen)
 
         self.screen_data = pygame.surfarray.array3d(self.screen)
+        print(self.screen_data)
         pygame.display.flip()
 
     def reset(self):
         # draw a map
         self.all_wall.empty()  # To clear a group of sprites
-        for wall in [[300, 500], [225, 500], [150, 500], [25, 75], [75, 75]]:
+        for wall in [[175, 25], [275, 25], [525, 25], [575, 25], [625, 25], [125, 75], [275, 75], [475, 75], [575, 75], [675, 25], [725, 75], [75, 125], [125, 125], [175, 125], [225, 125], [275, 125], [325, 125], [425, 125], [475, 125], [525, 125], [575, 125], [675, 125], [25, 175], [75, 175], [125, 175], [575, 175], [625, 175], [675, 175], [725, 175], [775, 175], [25, 225], [75, 225], [175, 225], [225, 225], [325, 225], [375, 225], [425, 225], [525, 225], [775, 225], [175, 275], [175, 275], [325, 275], [375, 275], [475, 275], [525, 275], [575, 275], [625, 275], [725, 275], [225, 325], [275, 325], [325, 325], [525, 325], [725, 325], [25, 375], [125, 375], [175, 375], [475, 375], [525, 375], [625, 375], [675, 375], [775, 375], [125, 425], [175, 425], [225, 425], [325, 425], [375, 425], [425, 425], [475, 425], [525, 425], [625, 425], [675, 425], [725, 425], [775, 425], [25, 475], [75, 475], [175, 475], [325, 475], [625, 475], [675, 475], [75, 525], [175, 525], [225, 525], [275, 525], [375, 525], [425, 525], [525, 525], [575, 525], [675, 525], [775, 525], [125, 575], [225, 575], [325, 575], [525, 575], [625, 575], [675, 575], [725, 575], [75, 625], [175, 625], [225, 625], [325, 625], [525, 625], [575, 625], [725, 625]]:
             self.all_wall.add(_wall.Wall(wall, self.photo_wall))
 
         # player
         self.my_tank.empty()
-        self.player = _player.MyTank([375, 625], self.photo_player, self.all_wall)
+        self.player = _player.MyTank([425, 325], self.photo_player, self.all_wall)
         self.my_tank.add(self.player)
 
         # enemy tanks
@@ -211,14 +214,16 @@ class TankEnv(gym.Env):
 
         self.done = False
         observation = self.screen_data
+        print("before reset return")
+        print(observation.shape)
 
         return observation
 
 
 def build_model(height, width, channels, actions):
     model = Sequential()
-    model.add(Convolution2D(64, (10, 10), strides=(3, 3), activation='relu', input_shape=(3, height, width, channels)))
-    model.add(Convolution2D(32, (5, 5), strides=(3, 3), activation='relu'))
+    model.add(Convolution2D(32, (10, 10), strides=(3, 3), activation='relu', input_shape=(3, height, width, channels)))
+    model.add(Convolution2D(16, (5, 5), strides=(3, 3), activation='relu'))
     model.add(Flatten())
     model.add(Dense(actions, activation='linear'))
     return model
@@ -231,7 +236,7 @@ def build_agent(model, actions):
     memory = SequentialMemory(limit=10000, window_length=3)
     dqn = DQNAgent(model=model, memory=memory, policy=policy,
                    enable_dueling_network=True, dueling_type='avg',
-                   nb_actions=actions, nb_steps_warmup=1000
+                   nb_actions=actions, nb_steps_warmup=1000, batch_size=2
                    )
     return dqn
 
@@ -240,11 +245,12 @@ def main():
     env = TankEnv()
     actions = env.action_space.n
     height, width, channels = env.observation_space.shape
+    print(env.observation_space.sample().shape)
     model = build_model(height, width, channels, actions)
     dqn = build_agent(model, actions)
     dqn.compile(Adam(lr=1e-4))
-    dqn.fit(env, nb_steps=10000, visualize=True, verbose=2)
-
+    dqn.load_weights('SavedWeights/10k-Fast/dqn_weights.h5f')
+    dqn.fit(env, nb_steps=1000, visualize=True, verbose=2)
     scores = dqn.test(env, nb_episodes=10, visualize=True)
     print(np.mean(scores.history['episode_reward']))
     dqn.save_weights('SavedWeights/10k-Fast/dqn_weights.h5f')
