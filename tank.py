@@ -4,12 +4,12 @@ from random import choice
 
 import numpy as np
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Flatten, Convolution2D
+from tensorflow.keras.layers import Dense
 from tensorflow.keras.optimizers import Adam
 
 from rl.agents.dqn import DQNAgent
 from rl.memory import SequentialMemory
-from rl.policy import LinearAnnealedPolicy, EpsGreedyQPolicy
+from rl.policy import BoltzmannQPolicy, LinearAnnealedPolicy, EpsGreedyQPolicy
 
 import enemy_tank as _enemy_tank
 import wall as _wall
@@ -33,11 +33,10 @@ class TankEnv(gym.Env):
 
     def __init__(self):
         self.action_space = gym.spaces.Discrete(6)
-        self.observation_space = gym.spaces.Box(low=0, high=255, shape=(WIDTH, HEIGHT, 3), dtype=np.uint8)
+        self.observation_space = gym.spaces.Box(low=np.array([0, 0]), high=np.array([WIDTH, HEIGHT]), dtype=np.uint8)
 
         # Pygame init
         pygame.init()
-        pygame.mixer.init()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("Танчики")
         self.clock = pygame.time.Clock()
@@ -53,7 +52,7 @@ class TankEnv(gym.Env):
 
         # Enemies' bullets init
         self.enemy_bullet = pygame.sprite.Group()
-        self.tanks = ((25, 25), (425, 25), (775, 25), (25, 325), (775, 325), (25, 625), (425, 625), (775, 625))
+        self.tanks = [[25, 25], [425, 25], [775, 25], [25, 325], [775, 325], [25, 625], [425, 625], [775, 625]]
 
         # Player init
         self.my_tank = pygame.sprite.Group()
@@ -135,11 +134,11 @@ class TankEnv(gym.Env):
         self.done = False
 
         ###################################################################
-        self.screen_data = pygame.surfarray.array3d(self.screen)
+        # self.screen_data = pygame.surfarray.array3d(self.screen)
         ####################################################################
 
     def step(self, action):
-        if action == 5:
+        if action == 5 and len(self.my_bullet) == 0:
             self.player.shoot(self.my_bullet, self.photo_bullet)
         else:
             self.player.move(action)
@@ -150,7 +149,7 @@ class TankEnv(gym.Env):
             self.reward = -50
             self.done = True
         elif pygame.sprite.groupcollide(self.my_bullet, self.all_wall, True, True):
-            self.reward = 0
+            self.reward = 1
         else:
             self.reward = -0.01
         pygame.sprite.groupcollide(self.enemy_bullet, self.all_wall, True, True)
@@ -165,7 +164,7 @@ class TankEnv(gym.Env):
             self.done = True
         if self.time % FPS == 0:
             print(self.time/FPS)
-        observation = self.screen_data
+        observation = self.get_obs()
 
         return observation, self.reward, self.done, {"info": "ok"}
 
@@ -184,14 +183,25 @@ class TankEnv(gym.Env):
         self.my_bullet.draw(self.screen)
         self.enemy_bullet.draw(self.screen)
 
-        self.screen_data = pygame.surfarray.array3d(self.screen)
-        print(self.screen_data)
+        # self.screen_data = pygame.surfarray.array3d(self.screen)
         pygame.display.flip()
 
     def reset(self):
         # draw a map
         self.all_wall.empty()  # To clear a group of sprites
-        for wall in [[175, 25], [275, 25], [525, 25], [575, 25], [625, 25], [125, 75], [275, 75], [475, 75], [575, 75], [675, 25], [725, 75], [75, 125], [125, 125], [175, 125], [225, 125], [275, 125], [325, 125], [425, 125], [475, 125], [525, 125], [575, 125], [675, 125], [25, 175], [75, 175], [125, 175], [575, 175], [625, 175], [675, 175], [725, 175], [775, 175], [25, 225], [75, 225], [175, 225], [225, 225], [325, 225], [375, 225], [425, 225], [525, 225], [775, 225], [175, 275], [175, 275], [325, 275], [375, 275], [475, 275], [525, 275], [575, 275], [625, 275], [725, 275], [225, 325], [275, 325], [325, 325], [525, 325], [725, 325], [25, 375], [125, 375], [175, 375], [475, 375], [525, 375], [625, 375], [675, 375], [775, 375], [125, 425], [175, 425], [225, 425], [325, 425], [375, 425], [425, 425], [475, 425], [525, 425], [625, 425], [675, 425], [725, 425], [775, 425], [25, 475], [75, 475], [175, 475], [325, 475], [625, 475], [675, 475], [75, 525], [175, 525], [225, 525], [275, 525], [375, 525], [425, 525], [525, 525], [575, 525], [675, 525], [775, 525], [125, 575], [225, 575], [325, 575], [525, 575], [625, 575], [675, 575], [725, 575], [75, 625], [175, 625], [225, 625], [325, 625], [525, 625], [575, 625], [725, 625]]:
+        for wall in [[175, 25], [275, 25], [525, 25], [575, 25], [625, 25], [125, 75], [275, 75], [475, 75], [575, 75],
+                     [675, 25], [725, 75], [75, 125], [125, 125], [175, 125], [225, 125], [275, 125], [325, 125],
+                     [425, 125], [475, 125], [525, 125], [575, 125], [675, 125], [25, 175], [75, 175], [125, 175],
+                     [575, 175], [625, 175], [675, 175], [725, 175], [775, 175], [25, 225], [75, 225], [175, 225],
+                     [225, 225], [325, 225], [375, 225], [425, 225], [525, 225], [775, 225], [175, 275], [175, 275],
+                     [325, 275], [375, 275], [475, 275], [525, 275], [575, 275], [625, 275], [725, 275], [225, 325],
+                     [275, 325], [325, 325], [525, 325], [725, 325], [25, 375], [125, 375], [175, 375], [475, 375],
+                     [525, 375], [625, 375], [675, 375], [775, 375], [125, 425], [175, 425], [225, 425], [325, 425],
+                     [375, 425], [425, 425], [475, 425], [525, 425], [625, 425], [675, 425], [725, 425], [775, 425],
+                     [25, 475], [75, 475], [175, 475], [325, 475], [625, 475], [675, 475], [75, 525], [175, 525],
+                     [225, 525], [275, 525], [375, 525], [425, 525], [525, 525], [575, 525], [675, 525], [775, 525],
+                     [125, 575], [225, 575], [325, 575], [525, 575], [625, 575], [675, 575], [725, 575], [75, 625],
+                     [175, 625], [225, 625], [325, 625], [525, 625], [575, 625], [725, 625]]:
             self.all_wall.add(_wall.Wall(wall, self.photo_wall))
 
         # player
@@ -213,30 +223,49 @@ class TankEnv(gym.Env):
         self.time = FPS * 120
 
         self.done = False
-        observation = self.screen_data
-        print("before reset return")
-        print(observation.shape)
+        observation = self.get_obs()
 
         return observation
 
+    def get_obs(self):
+        my_coord = self.player.rect.center
 
-def build_model(height, width, channels, actions):
+        enemy_coord = []
+        for tank in self.enemy_tanks:
+            enemy_coord.append(tank.rect.center)
+
+        wall_coord = []
+        for wall in self.all_wall:
+            wall_coord.append(wall.rect.center)
+
+        my_bullet = []
+        for bullet in self.my_bullet:
+            my_bullet.append(bullet.rect.center)
+
+        enemy_bullet = []
+        for bullet in self.enemy_bullet:
+            enemy_bullet.append(bullet.rect.center)
+
+        observation = [my_coord, my_bullet, enemy_coord, enemy_bullet, wall_coord]
+        return observation
+
+
+def build_model(shape, actions):
     model = Sequential()
-    model.add(Convolution2D(32, (10, 10), strides=(3, 3), activation='relu', input_shape=(3, height, width, channels)))
-    model.add(Convolution2D(16, (5, 5), strides=(3, 3), activation='relu'))
-    model.add(Flatten())
+    model.add(Dense(256, activation='relu', input_shape=shape))
+    model.add(Dense(128, activation='relu'))
+    model.add(Dense(32, activation='relu'))
     model.add(Dense(actions, activation='linear'))
     return model
 
 
 def build_agent(model, actions):
-    model.summary()
-    policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=1., value_min=.1, value_test=.2,
-                                  nb_steps=10000)
-    memory = SequentialMemory(limit=10000, window_length=3)
+    policy = BoltzmannQPolicy()
+    # policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=1., value_min=.1, value_test=.2, nb_steps=1000000)
+    memory = SequentialMemory(limit=50000, window_length=3)
     dqn = DQNAgent(model=model, memory=memory, policy=policy,
                    enable_dueling_network=True, dueling_type='avg',
-                   nb_actions=actions, nb_steps_warmup=1000, batch_size=2
+                   nb_actions=actions, nb_steps_warmup=1000000
                    )
     return dqn
 
@@ -244,16 +273,16 @@ def build_agent(model, actions):
 def main():
     env = TankEnv()
     actions = env.action_space.n
-    height, width, channels = env.observation_space.shape
-    print(env.observation_space.sample().shape)
-    model = build_model(height, width, channels, actions)
+    shape = env.observation_space.shape
+    print(shape)
+    model = build_model(shape, actions)
     dqn = build_agent(model, actions)
     dqn.compile(Adam(lr=1e-4))
-    dqn.load_weights('SavedWeights/10k-Fast/dqn_weights.h5f')
-    dqn.fit(env, nb_steps=1000, visualize=True, verbose=2)
-    scores = dqn.test(env, nb_episodes=10, visualize=True)
-    print(np.mean(scores.history['episode_reward']))
-    dqn.save_weights('SavedWeights/10k-Fast/dqn_weights.h5f')
+    dqn.fit(env, nb_steps=100000, visualize=False, verbose=2)
+    dqn.save_weights('SavedWeights/10k-Fast/dqn_weights.h5f', overwrite=True)
+    # dqn.load_weights('SavedWeights/10k-Fast/dqn_weights.h5f')
+    # scores = dqn.test(env, nb_episodes=10, visualize=True)
+    # print(np.mean(scores.history['episode_reward']))
 
 
 if __name__ == '__main__':
