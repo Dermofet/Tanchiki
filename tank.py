@@ -1,10 +1,11 @@
 import pygame
+from gym.spaces import Box, Discrete, Dict
 import gym
 from random import choice
 
 import numpy as np
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Dense, ConvLSTM2D
 from tensorflow.keras.optimizers import Adam
 
 from rl.agents.dqn import DQNAgent
@@ -32,8 +33,13 @@ class TankEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
     def __init__(self):
-        self.action_space = gym.spaces.Discrete(6)
-        self.observation_space = gym.spaces.Box(low=np.array([0, 0]), high=np.array([WIDTH, HEIGHT]), dtype=np.uint8)
+        self.action_space = Discrete(6)
+        # self.observation_space = Dict({"my_position": Box(low=np.array([0, 0]), high=np.array([WIDTH, HEIGHT])),
+        #                                "enemy_positions": Box(low=np.array([0, 0]), high=np.array([WIDTH, HEIGHT])),
+        #                                "wall_positions": Box(low=np.array([0, 0]), high=np.array([WIDTH, HEIGHT])),
+        #                                "my_bullet": Box(low=np.array([0, 0]), high=np.array([WIDTH, HEIGHT])),
+        #                                "enemy_bullet": Box(low=np.array([0, 0]), high=np.array([WIDTH, HEIGHT]))})
+        self.observation_space = Box(low=0, high=255, shape=(WIDTH, HEIGHT, 3))
 
         # Pygame init
         pygame.init()
@@ -133,8 +139,8 @@ class TankEnv(gym.Env):
         self.reward = 0
         self.done = False
 
-        ###################################################################
-        # self.screen_data = pygame.surfarray.array3d(self.screen)
+        ####################################################################
+        self.screen_data = pygame.surfarray.array3d(self.screen)
         ####################################################################
 
     def step(self, action):
@@ -164,9 +170,9 @@ class TankEnv(gym.Env):
             self.done = True
         if self.time % FPS == 0:
             print(self.time/FPS)
-        observation = self.get_obs()
+        # observation = self.get_obs()
 
-        return observation, self.reward, self.done, {"info": "ok"}
+        return self.screen_data, self.reward, self.done, {"info": "ok"}
 
     def render(self, mode='human'):
         self.my_tank.update()
@@ -183,7 +189,7 @@ class TankEnv(gym.Env):
         self.my_bullet.draw(self.screen)
         self.enemy_bullet.draw(self.screen)
 
-        # self.screen_data = pygame.surfarray.array3d(self.screen)
+        self.screen_data = pygame.surfarray.array3d(self.screen)
         pygame.display.flip()
 
     def reset(self):
@@ -223,38 +229,82 @@ class TankEnv(gym.Env):
         self.time = FPS * 120
 
         self.done = False
-        observation = self.get_obs()
+        # my_coord, my_bullet, enemy_coord, enemy_bullet, wall_coord = self.get_obs()
+        #
+        # return my_coord, my_bullet, enemy_coord, enemy_bullet, wall_coord
+        # observation = self.get_obs()
+        self.screen_data = pygame.surfarray.array3d(self.screen)
+        return self.screen_data
 
-        return observation
-
-    def get_obs(self):
-        my_coord = self.player.rect.center
-
-        enemy_coord = []
-        for tank in self.enemy_tanks:
-            enemy_coord.append(tank.rect.center)
-
-        wall_coord = []
-        for wall in self.all_wall:
-            wall_coord.append(wall.rect.center)
-
-        my_bullet = []
-        for bullet in self.my_bullet:
-            my_bullet.append(bullet.rect.center)
-
-        enemy_bullet = []
-        for bullet in self.enemy_bullet:
-            enemy_bullet.append(bullet.rect.center)
-
-        observation = [my_coord, my_bullet, enemy_coord, enemy_bullet, wall_coord]
-        return observation
+    # def get_obs(self):
+    #     observation = []
+    #     for i in self.player.rect.center:
+    #         observation.append(i)
+    #
+    #     for tank in self.enemy_tanks:
+    #         for i in tank.rect.center:
+    #             observation.append(i)
+    #
+    #     for wall in self.all_wall:
+    #         for i in wall.rect.center:
+    #             observation.append(i)
+    #
+    #     if len(self.all_wall) < 103:
+    #         for i in range(103 - len(self.all_wall)):
+    #             observation.append(-1)
+    #             observation.append(-1)
+    #
+    #     for bullet in self.my_bullet:
+    #         for i in bullet.rect.center:
+    #             observation.append(i)
+    #
+    #     if len(self.my_bullet) < 1:
+    #         for i in range(1 - len(self.my_bullet)):
+    #             observation.append(-1)
+    #             observation.append(-1)
+    #
+    #     for bullet in self.enemy_bullet:
+    #         for i in bullet.rect.center:
+    #             observation.append(i)
+    #
+    #     if len(self.enemy_bullet) < 16:
+    #         for i in range(16 - len(self.enemy_bullet)):
+    #             observation.append(-1)
+    #             observation.append(-1)
+    #
+    #     observation = np.asarray(observation)
+    #     print(observation)
+    #     print(observation.shape)
+    #     return observation
+    #
+    #     my_coord = self.player.rect.center
+    #
+    #     enemy_coord = []
+    #     for tank in self.enemy_tanks:
+    #         enemy_coord.append(tank.rect.center)
+    #
+    #     wall_coord = []
+    #     for wall in self.all_wall:
+    #         wall_coord.append(wall.rect.center)
+    #
+    #     my_bullet = []
+    #     for bullet in self.my_bullet:
+    #         my_bullet.append(bullet.rect.center)
+    #
+    #     enemy_bullet = []
+    #     for bullet in self.enemy_bullet:
+    #         enemy_bullet.append(bullet.rect.center)
+    #
+    #     observation = np.array([my_coord, my_bullet, enemy_coord, enemy_bullet, wall_coord])
+    #     print(observation)
+    #     return observation
 
 
 def build_model(shape, actions):
     model = Sequential()
-    model.add(Dense(256, activation='relu', input_shape=shape))
+    model.add(ConvLSTM2D())
+    model.add(Dense(128, activation='relu', input_shape=shape))
     model.add(Dense(128, activation='relu'))
-    model.add(Dense(32, activation='relu'))
     model.add(Dense(actions, activation='linear'))
     return model
 
@@ -262,10 +312,10 @@ def build_model(shape, actions):
 def build_agent(model, actions):
     policy = BoltzmannQPolicy()
     # policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=1., value_min=.1, value_test=.2, nb_steps=1000000)
-    memory = SequentialMemory(limit=50000, window_length=3)
+    memory = SequentialMemory(limit=50000, window_length=1)
     dqn = DQNAgent(model=model, memory=memory, policy=policy,
                    enable_dueling_network=True, dueling_type='avg',
-                   nb_actions=actions, nb_steps_warmup=1000000
+                   nb_actions=actions, nb_steps_warmup=10000
                    )
     return dqn
 
@@ -273,12 +323,12 @@ def build_agent(model, actions):
 def main():
     env = TankEnv()
     actions = env.action_space.n
-    shape = env.observation_space.shape
-    print(shape)
+    width, height, channels = env.observation_space.shape
     model = build_model(shape, actions)
+    model.summary()
     dqn = build_agent(model, actions)
     dqn.compile(Adam(lr=1e-4))
-    dqn.fit(env, nb_steps=100000, visualize=False, verbose=2)
+    dqn.fit(env, nb_steps=100000, visualize=True, verbose=2)
     dqn.save_weights('SavedWeights/10k-Fast/dqn_weights.h5f', overwrite=True)
     # dqn.load_weights('SavedWeights/10k-Fast/dqn_weights.h5f')
     # scores = dqn.test(env, nb_episodes=10, visualize=True)
