@@ -5,7 +5,7 @@ from random import choice
 
 import numpy as np
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, ConvLSTM2D
+from tensorflow.keras.layers import Dense, ConvLSTM2D, Convolution2D, Flatten
 from tensorflow.keras.optimizers import Adam
 
 from rl.agents.dqn import DQNAgent
@@ -300,23 +300,25 @@ class TankEnv(gym.Env):
     #     return observation
 
 
-def build_model(shape, actions):
+def build_model(width, height, channels, actions):
     model = Sequential()
-    model.add(ConvLSTM2D())
-    model.add(Dense(128, activation='relu', input_shape=shape))
-    model.add(Dense(128, activation='relu'))
+    model.add(ConvLSTM2D(32, (15, 15), strides=(3, 3), activation='relu', input_shape=(3, width, height, channels)))
+    model.add(Convolution2D(16, (5, 5), strides=(3, 3), activation='relu'))
+    model.add(Flatten())
+    model.add(Dense(64, activation='relu'))
+    model.add(Dense(32, activation='relu'))
     model.add(Dense(actions, activation='linear'))
     return model
 
 
 def build_agent(model, actions):
-    policy = BoltzmannQPolicy()
-    # policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=1., value_min=.1, value_test=.2, nb_steps=1000000)
-    memory = SequentialMemory(limit=50000, window_length=1)
+    model.summary()
+    policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=1., value_min=.1, value_test=.2,
+                                  nb_steps=10000)
+    memory = SequentialMemory(limit=1000000, window_length=3)
     dqn = DQNAgent(model=model, memory=memory, policy=policy,
                    enable_dueling_network=True, dueling_type='avg',
-                   nb_actions=actions, nb_steps_warmup=10000
-                   )
+                   nb_actions=actions, nb_steps_warmup=1000, batch_size=2)
     return dqn
 
 
@@ -324,8 +326,7 @@ def main():
     env = TankEnv()
     actions = env.action_space.n
     width, height, channels = env.observation_space.shape
-    model = build_model(shape, actions)
-    model.summary()
+    model = build_model(width, height, channels, actions)
     dqn = build_agent(model, actions)
     dqn.compile(Adam(lr=1e-4))
     dqn.fit(env, nb_steps=100000, visualize=True, verbose=2)
