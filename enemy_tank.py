@@ -57,14 +57,10 @@ class EnemyTank(pygame.sprite.Sprite):
 
         self.check_wall(self.all_wall)
 
-        if self.rect.top < 0:
-            self.rect.top = 0
-        if self.rect.bottom > HEIGHT:
-            self.rect.bottom = HEIGHT
-        if self.rect.right > WIDTH:
-            self.rect.right = WIDTH
-        if self.rect.left < 0:
-            self.rect.left = 0
+        self.rect.top = max(self.rect.top, 0)
+        self.rect.bottom = min(self.rect.bottom, HEIGHT)
+        self.rect.right = min(self.rect.right, WIDTH)
+        self.rect.left = max(self.rect.left, 0)
 
     def shoot(self, enemy_bullet, photo_bullet):
         if self.vector == 1:
